@@ -2,11 +2,6 @@ const express = require('express');
 const router = express.Router();
 const { query } = require('../db');
 
-// In-memory store for rate limiting: stores the last pixel placement timestamp for each user ID.
-// { [userId: string]: timestamp }
-// Note: For a production application with multiple server instances or requiring persistence
-// across restarts, an external store like Redis would be more appropriate.
-const userLastPixelTime = {};
 const PIXEL_COOLDOWN_MS = 10 * 1000; // 10 seconds cooldown period
 
 // GET /api/pixels - Fetch all pixels
@@ -33,6 +28,7 @@ router.get('/', async (req, res) => {
 // POST /api/pixel - Place or update a pixel
 router.post('/', async (req, res) => {
   const { x, y, color, userId } = req.body;
+  const ip = req.ip; // Retrieve the user's IP address
 
   // Basic Input Validation
   if (typeof x !== 'number' || typeof y !== 'number' || !color || !userId) {
@@ -46,25 +42,41 @@ router.post('/', async (req, res) => {
     return res.status(400).json({ error: 'Coordinates out of bounds (0-9).' });
   }
 
-  // Rate Limiting Check
   const now = Date.now();
-  if (userLastPixelTime[userId] && (now - userLastPixelTime[userId] < PIXEL_COOLDOWN_MS)) {
-    const timeLeft = Math.ceil((PIXEL_COOLDOWN_MS - (now - userLastPixelTime[userId])) / 1000);
-    return res.status(429).json({
-      error: 'Rate limit exceeded. Try again later.',
-      cooldownActive: true,
-      timeLeftSec: timeLeft
-    });
-  }
 
   try {
+    // Rate Limiting Check from Database
+    const cooldownCheck = await query(
+      'SELECT last_pixel_timestamp FROM ip_cooldowns WHERE ip_address = $1',
+      [ip]
+    );
+
+    if (cooldownCheck.rows.length > 0) {
+      const lastPixelTime = new Date(cooldownCheck.rows[0].last_pixel_timestamp).getTime();
+      if ((now - lastPixelTime) < PIXEL_COOLDOWN_MS) {
+        const timeLeft = Math.ceil((PIXEL_COOLDOWN_MS - (now - lastPixelTime)) / 1000);
+        return res.status(429).json({
+          error: 'Rate limit exceeded. Try again later.',
+          cooldownActive: true,
+          timeLeftSec: timeLeft
+        });
+      }
+    }
+
     // Insert the new pixel event. The GET endpoint will handle showing the latest.
     const { rows } = await query(
       'INSERT INTO pixels (x, y, color, user_id) VALUES ($1, $2, $3, $4) RETURNING id, x, y, color, user_id, timestamp',
       [x, y, color, userId]
     );
 
-    userLastPixelTime[userId] = now; // Update last pixel time for the user after successful placement
+    // Update last pixel time for the IP address in the database
+    await query(
+      `INSERT INTO ip_cooldowns (ip_address, last_pixel_timestamp)
+       VALUES ($1, CURRENT_TIMESTAMP)
+       ON CONFLICT (ip_address)
+       DO UPDATE SET last_pixel_timestamp = CURRENT_TIMESTAMP;`,
+      [ip]
+    );
 
     const newPixelData = { x, y, color, userId: rows[0].user_id, timestamp: rows[0].timestamp };
 

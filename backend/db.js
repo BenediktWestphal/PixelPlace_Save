@@ -38,6 +38,10 @@ const initDB = async () => {
     } else {
       console.log('Pixels table already exists.');
     }
+
+    // Initialize the IP cooldowns table
+    await initCooldownTable(client);
+
   } catch (err) {
     console.error('Error initializing database:', err);
     // It's often better to let the application fail fast if DB setup fails
@@ -47,8 +51,39 @@ const initDB = async () => {
   }
 };
 
+// Function to initialize the ip_cooldowns table
+const initCooldownTable = async (client) => {
+  try {
+    const res = await client.query(`
+      SELECT EXISTS (
+        SELECT FROM information_schema.tables
+        WHERE table_schema = 'public'
+        AND table_name = 'ip_cooldowns'
+      );
+    `);
+
+    if (!res.rows[0].exists) {
+      await client.query(`
+        CREATE TABLE ip_cooldowns (
+          ip_address TEXT PRIMARY KEY,
+          last_pixel_timestamp TIMESTAMPTZ NOT NULL
+        );
+      `);
+      console.log('ip_cooldowns table created successfully.');
+    } else {
+      console.log('ip_cooldowns table already exists.');
+    }
+  } catch (err) {
+    // Log the error but don't exit the process,
+    // as the main table (pixels) might be more critical.
+    console.error('Error initializing ip_cooldowns table:', err);
+    // Depending on requirements, you might want to re-throw or handle differently
+  }
+};
+
 module.exports = {
   query: (text, params) => pool.query(text, params),
   initDB,
   pool, // Export pool for potential direct use if needed
+  // initCooldownTable is not exported as it's only used internally by initDB
 };

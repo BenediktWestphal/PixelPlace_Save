@@ -30,6 +30,7 @@ app.use((req, res, next) => {
 });
 
 // Middleware
+app.set('trust proxy', true); // Trust proxy headers for req.ip
 app.use(cors({ origin: frontendUrl })); // Standard CORS for HTTP requests
 app.use(express.json());
 
