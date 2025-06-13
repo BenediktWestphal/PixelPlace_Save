@@ -39,9 +39,19 @@ const initDB = async () => {
       console.log('Pixels table already exists.');
     }
 
-    // Initialize the IP cooldowns table
-    await initCooldownTable(client);
+    // Check and add ip_address column
+    const ipColumnRes = await client.query(`
+      SELECT column_name
+      FROM information_schema.columns
+      WHERE table_name='pixels' AND column_name='ip_address';
+    `);
 
+    if (ipColumnRes.rowCount === 0) {
+      await client.query('ALTER TABLE pixels ADD COLUMN ip_address VARCHAR(255);');
+      console.log('Column ip_address added to pixels table.');
+    } else {
+      console.log('Column ip_address already exists in pixels table.');
+    }
   } catch (err) {
     console.error('Error initializing database:', err);
     // It's often better to let the application fail fast if DB setup fails
@@ -51,39 +61,8 @@ const initDB = async () => {
   }
 };
 
-// Function to initialize the ip_cooldowns table
-const initCooldownTable = async (client) => {
-  try {
-    const res = await client.query(`
-      SELECT EXISTS (
-        SELECT FROM information_schema.tables
-        WHERE table_schema = 'public'
-        AND table_name = 'ip_cooldowns'
-      );
-    `);
-
-    if (!res.rows[0].exists) {
-      await client.query(`
-        CREATE TABLE ip_cooldowns (
-          ip_address TEXT PRIMARY KEY,
-          last_pixel_timestamp TIMESTAMPTZ NOT NULL
-        );
-      `);
-      console.log('ip_cooldowns table created successfully.');
-    } else {
-      console.log('ip_cooldowns table already exists.');
-    }
-  } catch (err) {
-    // Log the error but don't exit the process,
-    // as the main table (pixels) might be more critical.
-    console.error('Error initializing ip_cooldowns table:', err);
-    // Depending on requirements, you might want to re-throw or handle differently
-  }
-};
-
 module.exports = {
   query: (text, params) => pool.query(text, params),
   initDB,
   pool, // Export pool for potential direct use if needed
-  // initCooldownTable is not exported as it's only used internally by initDB
 };

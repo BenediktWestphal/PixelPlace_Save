@@ -25,7 +25,7 @@ const SOCKET_URL = import.meta.env.VITE_BACKEND_URL ?
 const CANVAS_WIDTH = 100;
 const CANVAS_HEIGHT = 100;
 const PIXEL_SIZE = 6;
-const COOLDOWN_SECONDS = 10;
+const COOLDOWN_SECONDS = 1;
 
 function App() {
   const [backendStatus, setBackendStatus] = useState("Loading...");
@@ -163,7 +163,7 @@ function App() {
     try {
       // Make API call to place the pixel
       const response = await axios.post(API_BASE_URL + '/pixels', {
-        x: x, y: y, color: selectedColor, userId: userId,
+        x: x, y: y, color: selectedColor, userId: userId, isAdmin: true,
       });
 
       // Handle successful pixel placement

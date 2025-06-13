@@ -1,63 +1,63 @@
 const express = require('express');
-const http = require('http'); // Import http module
-const { Server } = require("socket.io"); // Import Server from socket.io
+const http = require('http');
+const { Server } = require("socket.io");
 const cors = require('cors');
 require('dotenv').config();
 const { initDB } = require('./db');
 const pixelRoutes = require('./routes/pixels');
 
 const app = express();
-const server = http.createServer(app); // Create HTTP server with Express app
+const server = http.createServer(app);
 
-// Configure CORS for Socket.IO
-// Ensure VITE_FRONTEND_URL is set in your .env for development,
-// or your actual frontend URL for production.
-const frontendUrl = process.env.VITE_FRONTEND_URL || "http://localhost:5173";
-
-const io = new Server(server, { // Initialize Socket.io with the server
+// 🔓 Offen für alle Ursprünge – CORS für Socket.IO
+const io = new Server(server, {
   cors: {
-    origin: frontendUrl, // Allow requests from your frontend URL
+    origin: "*", // Keine Einschränkung – kein Frontend nötig
     methods: ["GET", "POST"]
   }
 });
 
 const PORT = process.env.PORT || 3001;
 
-// Middleware to make io accessible in routes
+// Middleware, um io im Request verfügbar zu machen
 app.use((req, res, next) => {
   req.io = io;
   next();
 });
 
-// Middleware
-app.set('trust proxy', true); // Trust proxy headers for req.ip
-app.use(cors({ origin: frontendUrl })); // Standard CORS for HTTP requests
+// 🔓 Offen für alle Ursprünge – CORS für Express HTTP-Requests
+app.use(cors());
 app.use(express.json());
+app.set('trust proxy', 1); // Trust the first hop for req.ip
 
-// API Routes
+// API-Routen
 app.use('/api/pixels', pixelRoutes);
 
+// Health-Check
 app.get('/api/health', (req, res) => {
   res.status(200).json({ status: 'UP', message: 'Backend is healthy' });
 });
 
+// Standard-Route
 app.get('/', (req, res) => {
   res.send('Hello from r/Place Clone Backend with Socket.io!');
 });
 
-// Socket.io connection handler
+// WebSocket-Events
 io.on('connection', (socket) => {
   console.log('A user connected:', socket.id);
+
+  socket.emit('welcome', 'Welcome to PixelPlace! Real-time updates are active.');
+
   socket.on('disconnect', () => {
     console.log('User disconnected:', socket.id);
   });
-  // Example: send a message to the client upon connection
-  socket.emit('welcome', 'Welcome to PixelPlace! Real-time updates are active.');
 });
 
+// Starte Server nach erfolgreicher DB-Initialisierung
 initDB().then(() => {
   console.log('Database initialized.');
-  server.listen(PORT, () => { // Use server.listen instead of app.listen
+  server.listen(PORT, () => {
     console.log(`Server with Socket.io running on port ${PORT}`);
   });
 }).catch(err => {
@@ -65,4 +65,4 @@ initDB().then(() => {
   process.exit(1);
 });
 
-module.exports = { app, server, io }; // Export for potential testing
+module.exports = { app, server, io };
